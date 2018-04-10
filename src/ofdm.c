@@ -1014,9 +1014,9 @@ void ofdm_sync_state_machine(struct OFDM *ofdm, int *rx_uw) {
         }
         if (ofdm->uw_errors > 2) {
             ofdm->sync_counter++;
-        }
-        if (ofdm->sync_counter == sync_counter_thresh) {
-            strcpy(next_state, "searching");
+            if (ofdm->sync_counter == sync_counter_thresh) {
+                strcpy(next_state, "searching");
+            }
         } else {
             ofdm->sync_counter = 0;
         }
