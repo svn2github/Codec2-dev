@@ -216,7 +216,7 @@ int main(int argc, char *argv[])
 
     //#define TESTING_FILE
     #ifdef TESTING_FILE
-    FILE *fin=fopen("/home/ssampson/testing/ofdm_test.raw", "rb");
+    FILE *fin=fopen("/home/david/codec2-dev/octave/ofdm_test.raw", "rb");
     assert(fin != NULL);
     int Nbitsperframe = ofdm_get_bits_per_frame(ofdm);
     int Nmaxsamperframe = ofdm_get_max_samples_per_frame();
