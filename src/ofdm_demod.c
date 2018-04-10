@@ -68,9 +68,10 @@ int main(int argc, char *argv[])
 
     if (argc < 3) {
         fprintf(stderr, "\n");
-	printf("usage: %s InputModemRawFile OutputFile [-o OctaveLogFile] [--sd]\n", argv[0]);
+	printf("usage: %s InputModemRawFile OutputFile [-o OctaveLogFile] [--sd] [-v VerboseLevel]\n", argv[0]);
         fprintf(stderr, "\n");
         fprintf(stderr, "              Default output file format is one byte per bit hard decision\n");
+        fprintf(stderr, "  -v          Verbose info the stderr\n");
         fprintf(stderr, "  -o          Octave log file for testing\n");
         fprintf(stderr, "  --sd        soft decision output, four doubles per QPSK symbol\n");
         fprintf(stderr, "\n");
@@ -111,6 +112,10 @@ int main(int argc, char *argv[])
     ofdm = ofdm_create(OFDM_CONFIG_700D);
     assert(ofdm != NULL);
 
+    if ((arg = opt_exists(argv, argc, "-v")) != 0) {
+        ofdm_set_verbose(ofdm, atoi(argv[arg+1]));
+    }
+
     int Nbitsperframe = ofdm_get_bits_per_frame(ofdm);
     int Nmaxsamperframe = ofdm_get_max_samples_per_frame();
     
@@ -118,9 +123,7 @@ int main(int argc, char *argv[])
     COMP   rxbuf_in[Nmaxsamperframe];
     int    rx_bits[Nbitsperframe];
     char   rx_bits_char[Nbitsperframe];
-    int    state, next_state;
-
-    state = OFDM_SEARCHING;
+    int    rx_uw[OFDM_UW_LEN];
     f = 0;
 
     nin_frame = ofdm_get_nin(ofdm);
@@ -133,29 +136,39 @@ int main(int argc, char *argv[])
             rxbuf_in[i].imag = 0.0;
         }
 
-        next_state = state;
-        switch(state) {
-        case OFDM_SEARCHING:
-            if (ofdm_sync_search(ofdm, rxbuf_in)) {
-                next_state = OFDM_SYNCED;
-            }
-            break;
-        case OFDM_SYNCED:
-            ofdm_demod(ofdm, rx_bits, rxbuf_in);
-            break;
+        if (strcmp(ofdm->sync_state,"searching") == 0) {
+            ofdm_sync_search(ofdm, rxbuf_in);
         }
-        state = next_state;
+    
+        if ((strcmp(ofdm->sync_state,"synced") == 0) || (strcmp(ofdm->sync_state,"trial_sync") == 0) ) {
+            ofdm_demod(ofdm, rx_bits, rxbuf_in);
+            
+            if (sd == 0) {
+                /* simple hard decision output for uncoded testing */
+                for(i=0; i<Nbitsperframe; i++) {
+                    rx_bits_char[i] = rx_bits[i];
+                }
+                fwrite(rx_bits_char, sizeof(char), Nbitsperframe, fout);
+            }
+
+            /* extract Unique Word bits */
+
+            for(i=0; i<OFDM_UW_LEN; i++) {
+                rx_uw[i] = rx_bits[i];
+            }
+        }
+        
+        ofdm_sync_state_machine(ofdm, rx_uw);
 
         nin_frame = ofdm_get_nin(ofdm);
 
-        if ((sd == 0) && (state == OFDM_SYNCED)) {
-            /* simple hard decision output for uncoded testing */
-            for(i=0; i<Nbitsperframe; i++) {
-                rx_bits_char[i] = rx_bits[i];
-            }
-            fwrite(rx_bits_char, sizeof(char), Nbitsperframe, fout);
+        if (ofdm->verbose) {
+            fprintf(stderr, "f: %2d state: %-10s uw_errors: %2d %1d foff: %3.1f\n",
+             f, ofdm->last_sync_state, ofdm->uw_errors, ofdm->sync_counter, ofdm->foff_est_hz);
         }
 
+        /* optional logging of states */
+        
         if (oct) {
             /* note corrected phase (rx no phase) is one big linear array for frame */
 
